@@ -14,7 +14,7 @@ import {
 } from '../../providers/football-provider.interface';
 import { FixturesService } from '../fixtures/fixtures.service';
 
-interface LivePayload {
+export interface LivePayload {
   at: string;
   count: number;
   fixtures: ProviderFixture[];

@@ -57,6 +57,8 @@ export class FixturesService {
       homeGoals: f.homeGoals ?? undefined,
       awayGoals: f.awayGoals ?? undefined,
     }));
-    await this.repo.upsert(rows, ['externalId']);
+    // Cast: la columna JSONB `analysis` provoca un conflicto de tipos conocido
+    // entre Partial<Fixture> y QueryDeepPartialEntity de TypeORM en upsert.
+    await this.repo.upsert(rows as any, ['externalId']);
   }
 }
