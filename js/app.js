@@ -695,20 +695,39 @@
       navigate(state.view);
     });
 
-    // theme
-    const themeBtn = document.getElementById("themeToggle");
-    themeBtn.addEventListener("click", () => {
-      const cur = document.documentElement.getAttribute("data-theme");
-      const next = cur === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", next);
-      try { localStorage.setItem("sa-theme", next); } catch (_) {}
-      // re-render para refrescar colores de los SVG
-      VIEWS[state.view]();
+    // theme menu (theme-factory): Floodlight / Terminal / Cobalt / Broadcast
+    const THEMES = ["dark", "terminal", "cobalt", "light"];
+    const themeBtn = document.getElementById("themeBtn");
+    const themeMenu = document.getElementById("themeMenu");
+    function markTheme(t) {
+      themeMenu.querySelectorAll(".theme-opt").forEach((o) => o.classList.toggle("is-active", o.dataset.themeSet === t));
+    }
+    function setTheme(t, rerender) {
+      if (!THEMES.includes(t)) t = "dark";
+      document.documentElement.setAttribute("data-theme", t);
+      try { localStorage.setItem("sa-theme", t); } catch (_) {}
+      markTheme(t);
+      if (rerender) navigate(state.view); // refresca colores de los SVG
+    }
+    function closeThemeMenu() { themeMenu.hidden = true; themeBtn.setAttribute("aria-expanded", "false"); }
+    themeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = themeMenu.hidden;
+      themeMenu.hidden = !willOpen;
+      themeBtn.setAttribute("aria-expanded", String(willOpen));
     });
-    try {
-      const saved = localStorage.getItem("sa-theme");
-      if (saved) document.documentElement.setAttribute("data-theme", saved);
-    } catch (_) {}
+    themeMenu.addEventListener("click", (e) => {
+      const o = e.target.closest(".theme-opt");
+      if (!o) return;
+      setTheme(o.dataset.themeSet, true);
+      closeThemeMenu();
+    });
+    document.addEventListener("click", () => { if (!themeMenu.hidden) closeThemeMenu(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !themeMenu.hidden) closeThemeMenu(); });
+    // init (sin re-render: el boot hace el primer render)
+    let savedTheme = "dark";
+    try { savedTheme = localStorage.getItem("sa-theme") || "dark"; } catch (_) {}
+    setTheme(savedTheme, false);
 
     // sidebar collapse (desktop) + menu (mobile)
     document.getElementById("sidebarCollapse").addEventListener("click", () => app.classList.toggle("is-collapsed"));
@@ -719,19 +738,52 @@
     scrim.addEventListener("click", () => app.classList.remove("is-open"));
     app.appendChild(scrim);
 
-    // búsqueda
+    // búsqueda en vivo con dropdown de resultados + empty state
     const search = document.getElementById("globalSearch");
+    const searchResults = document.getElementById("searchResults");
+    function closeSearch() { searchResults.hidden = true; search.setAttribute("aria-expanded", "false"); }
+    function renderSearch(q) {
+      q = (q || "").trim();
+      if (!q) { closeSearch(); return; }
+      const res = StatData.search(state.league, q);
+      let html = "";
+      if (res.teams.length) {
+        html += `<p class="sr-group">Equipos</p>`;
+        html += res.teams.map((t) => `<div class="sr-item" data-kind="team" data-id="${t.id}">${crest(t, 26)}<strong>${esc(t.name)}</strong><span class="sr-meta">${t.pos}º · ${t.pts} pts</span></div>`).join("");
+      }
+      if (res.players.length) {
+        html += `<p class="sr-group">Jugadores</p>`;
+        html += res.players.map((p) => `<div class="sr-item" data-kind="player">${avatar(p.name, p.color)}<strong>${esc(p.name)}</strong><span class="sr-meta">${p.goals} goles</span></div>`).join("");
+      }
+      if (!res.teams.length && !res.players.length) {
+        html = `<div class="empty" style="padding:26px 16px"><div class="empty__icon"><svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2"><path d="M21 21l-4.3-4.3M11 19a8 8 0 110-16 8 8 0 010 16z"/></svg></div><p>Sin resultados para <b>“${esc(q)}”</b></p></div>`;
+      }
+      searchResults.innerHTML = html;
+      searchResults.hidden = false;
+      search.setAttribute("aria-expanded", "true");
+    }
     document.addEventListener("keydown", (e) => {
       if (e.key === "/" && document.activeElement !== search) { e.preventDefault(); search.focus(); }
     });
+    search.addEventListener("input", () => renderSearch(search.value));
+    search.addEventListener("focus", () => { if (search.value.trim()) renderSearch(search.value); });
     search.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { closeSearch(); search.blur(); return; }
       if (e.key === "Enter") {
-        const q = search.value.trim().toLowerCase();
-        const res = StatData.search(state.league, q);
+        const res = StatData.search(state.league, search.value.trim());
         if (res.teams[0]) { state.compare.a = res.teams[0].id; navigate("comparador"); }
-        else navigate("jugadores");
+        else if (res.players[0]) navigate("jugadores");
+        closeSearch(); search.value = "";
       }
     });
+    searchResults.addEventListener("click", (e) => {
+      const it = e.target.closest(".sr-item");
+      if (!it) return;
+      if (it.dataset.kind === "team") { state.compare.a = it.dataset.id; navigate("comparador"); }
+      else navigate("jugadores");
+      closeSearch(); search.value = "";
+    });
+    document.addEventListener("click", (e) => { if (!e.target.closest(".search")) closeSearch(); });
 
     // hash inicial
     window.addEventListener("hashchange", () => {
