@@ -629,11 +629,21 @@
   /* =====================================================================
      VISTA: ANÁLISIS DE PARTIDO
      ===================================================================== */
-  function viewAnalisis() {
+  async function viewAnalisis() {
     const lg = state.league;
     const list = StatData.getMatchList(lg);
+    if (!list.length) {
+      content.innerHTML = `<div class="view"><div class="card"><div class="empty"><div class="empty__icon"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm0-4h-2V7h2z"/></svg></div><h3>Sin partidos disponibles</h3><p class="muted">Esta competición no tiene partidos sincronizados todavía.</p></div></div></div>`;
+      return;
+    }
     if (!state.matchId || !list.find((x) => x.id === state.matchId)) state.matchId = list[0].id;
-    const a = StatData.getMatchAnalysis(lg, state.matchId);
+    const sel = list.find((x) => x.id === state.matchId) || list[0];
+    let a = null;
+    if (liveMode() && window.StatApi && sel.externalId) {
+      try { a = await window.StatApi.getMatchAnalysis(sel.externalId); } catch (_) { a = null; }
+      if (a) { if (!a.home) a.home = sel.home; if (!a.away) a.away = sel.away; }
+    }
+    if (!a) a = StatData.getMatchAnalysis(lg, state.matchId);
 
     const opts = list
       .map((m) => `<option value="${m.id}" ${m.id === state.matchId ? "selected" : ""}>${esc(m.home.name)} vs ${esc(m.away.name)}</option>`)
@@ -715,9 +725,9 @@
       })
       .join("");
 
-    document.getElementById("matchSel").addEventListener("change", (e) => {
+    document.getElementById("matchSel").addEventListener("change", async (e) => {
       state.matchId = e.target.value;
-      viewAnalisis();
+      await viewAnalisis();
       appendDisclaimer();
     });
   }
@@ -838,9 +848,18 @@
   const _demoScorers = StatData.getScorers.bind(StatData);
   const _demoTeam = StatData.getTeam.bind(StatData);
   const _demoMatches = StatData.getMatches.bind(StatData);
+  const _demoMatchList = StatData.getMatchList.bind(StatData);
   StatData.getStandings = (lg) => (liveMode() && LIVE.standings[lg]) ? LIVE.standings[lg] : _demoStandings(lg);
   StatData.getScorers = (lg) => (liveMode() && LIVE.scorers[lg]) ? LIVE.scorers[lg] : _demoScorers(lg);
   StatData.getMatches = (lg) => (liveMode() && LIVE.matches[lg]) ? LIVE.matches[lg] : _demoMatches(lg);
+  StatData.getMatchList = (lg) => {
+    if (liveMode() && LIVE.matches[lg]) {
+      const m = LIVE.matches[lg];
+      const list = [...m.live, ...m.recent];
+      if (list.length) return list;
+    }
+    return _demoMatchList(lg);
+  };
   StatData.getTeam = (lg, id) => {
     if (liveMode() && LIVE.standings[lg]) return LIVE.standings[lg].find((t) => t.id === String(id)) || LIVE.standings[lg][0];
     return _demoTeam(lg, id);
@@ -883,7 +902,7 @@
     pageTitle.textContent = title;
     pageSubtitle.textContent = sub;
     // render
-    VIEWS[view]();
+    await VIEWS[view]();
     appendDisclaimer();
     // close mobile menu
     app.classList.remove("is-open");

@@ -16,6 +16,8 @@ export interface AppConfig {
     name: string;
     baseUrl: string;
     apiKey: string;
+    fdBaseUrl: string;
+    fdToken: string;
     defaultSeason: number;
     leagueIds: number[];
     livePollSeconds: number;
@@ -50,6 +52,8 @@ export default (): AppConfig => ({
     name: process.env.PROVIDER ?? 'apifootball',
     baseUrl: process.env.APIFOOTBALL_BASE_URL ?? 'https://v3.football.api-sports.io',
     apiKey: process.env.APIFOOTBALL_KEY ?? '',
+    fdBaseUrl: process.env.FOOTBALLDATA_BASE_URL ?? 'https://api.football-data.org/v4',
+    fdToken: process.env.FOOTBALLDATA_TOKEN ?? '',
     defaultSeason: parseInt(process.env.DEFAULT_SEASON ?? '2024', 10),
     leagueIds: (process.env.SYNC_LEAGUE_IDS ?? '140,39,135,78')
       .split(',')

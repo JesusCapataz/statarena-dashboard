@@ -23,9 +23,11 @@ export const envValidationSchema = Joi.object({
   JWT_SECRET: Joi.string().min(16).required(),
   JWT_EXPIRES_IN: Joi.string().default('1d'),
 
-  PROVIDER: Joi.string().default('apifootball'),
+  PROVIDER: Joi.string().valid('apifootball', 'footballdata').default('apifootball'),
   APIFOOTBALL_BASE_URL: Joi.string().uri().default('https://v3.football.api-sports.io'),
   APIFOOTBALL_KEY: Joi.string().allow('').default(''),
+  FOOTBALLDATA_BASE_URL: Joi.string().uri().default('https://api.football-data.org/v4'),
+  FOOTBALLDATA_TOKEN: Joi.string().allow('').default(''),
   DEFAULT_SEASON: Joi.number().default(2024),
   SYNC_LEAGUE_IDS: Joi.string().default('140,39,135,78'),
   LIVE_POLL_SECONDS: Joi.number().min(10).default(20),

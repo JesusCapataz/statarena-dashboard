@@ -178,8 +178,57 @@
       };
     },
 
+    /** Lista de partidos reales (en vivo + recientes) para el selector de Análisis. */
+    async getMatchList(slug) {
+      const m = await this.getMatches(slug);
+      return [...m.live, ...m.recent].map((x) => ({
+        id: String(x.externalId), externalId: x.externalId,
+        home: x.home, away: x.away, hs: x.hs, as: x.as,
+        status: x.status, minute: x.minute, date: x.date,
+      }));
+    },
+
+    /** Análisis real de un partido, mapeado al formato que consume la vista. */
     async getMatchAnalysis(fixtureId) {
-      return request(`/analysis/fixtures/${fixtureId}`);
+      const a = await request(`/analysis/fixtures/${fixtureId}`);
+      const f = a.fixture || {};
+      const homeId = f.home && f.home.externalId;
+      const awayId = f.away && f.away.externalId;
+      const mkTeam = (t) => t ? { id: String(t.externalId), apiId: t.externalId, name: t.name, short: shortOf(t.name || ""), color: hashColor(t.name || "x"), c2: hashColor((t.name || "x") + "x"), logo: t.logo || null } : null;
+      const typeMap = (t) => { t = (t || "").toLowerCase(); return t.indexOf("goal") !== -1 ? "goal" : t.indexOf("card") !== -1 ? "card" : "subst"; };
+      const lineupOf = (tid) => {
+        const lu = (a.lineups || []).find((l) => l.teamExternalId === tid);
+        if (!lu) return { formation: "—", startXI: [], substitutes: [] };
+        return {
+          formation: lu.formation || "—",
+          startXI: (lu.startXI || []).map((p) => ({ name: p.name, number: p.number, pos: p.pos || "—" })),
+          substitutes: (lu.substitutes || []).map((p) => ({ name: p.name })),
+        };
+      };
+      const d = a.derived || {};
+      const stats = [];
+      if (d.possession && (d.possession.home != null || d.possession.away != null))
+        stats.push({ label: "Posesión", home: (d.possession.home ?? "-") + "%", away: (d.possession.away ?? "-") + "%", ha: d.possession.home || 0, aa: d.possession.away || 0 });
+      if (d.shots) stats.push({ label: "Remates", home: d.shots.home, away: d.shots.away, ha: d.shots.home, aa: d.shots.away });
+      if (d.xg && (d.xg.home != null || d.xg.away != null))
+        stats.push({ label: "xG", home: d.xg.home ?? "-", away: d.xg.away ?? "-", ha: Number(d.xg.home) || 0, aa: Number(d.xg.away) || 0 });
+      if (d.cards) stats.push({ label: "Tarjetas", home: d.cards.home, away: d.cards.away, ha: d.cards.home, aa: d.cards.away });
+      const st = (f.status || "").toUpperCase();
+      return {
+        id: String(fixtureId),
+        home: mkTeam(f.home) || { name: "Local", short: "LOC", color: "#888" },
+        away: mkTeam(f.away) || { name: "Visitante", short: "VIS", color: "#888" },
+        hs: f.homeGoals, as: f.awayGoals,
+        status: ["1H", "HT", "2H", "ET", "LIVE", "IN_PLAY", "PAUSED"].indexOf(st) !== -1 ? "live" : "ft",
+        minute: f.elapsed,
+        lineups: { home: lineupOf(homeId), away: lineupOf(awayId) },
+        events: (a.events || []).map((e) => ({ minute: e.minute, type: typeMap(e.type), side: e.teamExternalId === homeId ? "home" : "away", player: e.player, assist: e.assist, detail: e.detail })),
+        goalsTimeline: d.goalsTimeline || [],
+        momentum: d.momentum || [],
+        stats,
+        possession: d.possession || { home: null, away: null },
+        xg: d.xg || { home: null, away: null },
+      };
     },
 
     async liveSnapshot() {
