@@ -89,11 +89,11 @@
         <!-- KPIs -->
         <div class="kpis">
           ${kpiCard("Goles totales", s.totalGoals, "+8.4%", true, "ball",
-            table[0].ptsSeries.map((_, i) => 2 + Math.sin(i / 2) + Math.random()))}
+            (table[0].ptsSeries || []).map((_, i) => 2 + Math.sin(i / 2) + Math.random()))}
           ${kpiCard("Media de goles/partido", s.avgGoals, "+0.12", true, "trend",
             s.goalsByRound)}
           ${kpiCard("Partidos jugados", s.totalMatches, `${s.round}/${s.rounds} jornadas`, null, "calendar",
-            table[0].ptsSeries)}
+            (table[0].ptsSeries || []))}
           ${kpiCard("Asistencia media", (s.avgAttendance / 1000).toFixed(1) + "K", "+3.1%", true, "people",
             Array.from({ length: 12 }, () => 28 + Math.random() * 30))}
         </div>
