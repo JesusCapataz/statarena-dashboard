@@ -361,7 +361,7 @@
       <div class="view">
         <div class="tiles">
           ${table.map((t) => `
-            <div class="tile" data-team="${t.id}">
+            <div class="tile" data-team="${t.id}" tabindex="0" role="button" aria-label="Ver ${esc(t.name)}">
               <div class="tile__head">
                 ${crest(t, 46)}
                 <div>
@@ -385,6 +385,9 @@
 
     content.querySelectorAll(".tile").forEach((tile) => {
       tile.addEventListener("click", () => openTeam(tile.dataset.team));
+      tile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openTeam(tile.dataset.team); }
+      });
     });
   }
 
@@ -633,6 +636,14 @@
     comparador: viewComparador,
   };
 
+  function appendDisclaimer() {
+    const host = content.querySelector(".view") || content;
+    const d = document.createElement("div");
+    d.className = "disclaimer";
+    d.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><span><b>Datos simulados</b> con fines de demostración (generados de forma determinista). Escudos reales vía media.api-sports.io · Conecta una API para resultados en vivo.</span>`;
+    host.appendChild(d);
+  }
+
   function navigate(view) {
     if (!VIEWS[view]) view = "resumen";
     state.view = view;
@@ -645,6 +656,7 @@
     pageSubtitle.textContent = sub;
     // render
     VIEWS[view]();
+    appendDisclaimer();
     // close mobile menu
     app.classList.remove("is-open");
     if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view);
