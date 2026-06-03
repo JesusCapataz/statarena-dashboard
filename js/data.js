@@ -258,6 +258,105 @@
     return { live, recent, upcoming };
   }
 
+  /* ---------- Análisis de partido (demo determinista) ---------- */
+  const FORMATIONS = ['4-3-3', '4-2-3-1', '3-5-2', '4-4-2', '3-4-3'];
+  const genName = (r) => `${pick(r, FIRST)} ${pick(r, LAST)}`;
+
+  function buildLineup(r) {
+    const formation = pick(r, FORMATIONS);
+    const rows = formation.split('-').map(Number);
+    const posByRow = ['DEF', 'MED', 'MED', 'DEL'];
+    const startXI = [{ name: genName(r), number: 1, pos: 'POR' }];
+    let num = 2;
+    rows.forEach((count, ri) => {
+      for (let i = 0; i < count; i++) {
+        startXI.push({ name: genName(r), number: num++, pos: posByRow[Math.min(ri, 3)] });
+      }
+    });
+    const substitutes = Array.from({ length: 7 }, () => ({ name: genName(r), number: num++ }));
+    return { formation, startXI, substitutes };
+  }
+
+  function buildMatchAnalysis(lg, m, id) {
+    const r = rng(hash(lg + id));
+    const hs = m.hs != null ? m.hs : randInt(r, 0, 3);
+    const as = m.as != null ? m.as : randInt(r, 0, 3);
+
+    const events = [];
+    const addGoals = (n, side) => {
+      for (let i = 0; i < n; i++) {
+        events.push({
+          minute: randInt(r, 1, 90), type: 'goal', side,
+          player: genName(r), assist: r() > 0.4 ? genName(r) : null,
+          detail: r() > 0.85 ? 'Penalty' : null,
+        });
+      }
+    };
+    addGoals(hs, 'home');
+    addGoals(as, 'away');
+    for (let i = 0; i < randInt(r, 2, 5); i++) {
+      events.push({
+        minute: randInt(r, 10, 90), type: 'card',
+        detail: r() > 0.86 ? 'Red Card' : 'Yellow Card',
+        side: r() > 0.5 ? 'home' : 'away', player: genName(r),
+      });
+    }
+    for (let i = 0; i < randInt(r, 4, 6); i++) {
+      events.push({
+        minute: randInt(r, 55, 89), type: 'subst',
+        side: r() > 0.5 ? 'home' : 'away', player: genName(r), assist: genName(r),
+      });
+    }
+    events.sort((a, b) => a.minute - b.minute);
+
+    let h = 0, a = 0;
+    const goalsTimeline = [{ minute: 0, home: 0, away: 0 }];
+    events.filter((e) => e.type === 'goal').forEach((e) => {
+      if (e.side === 'home') h++; else a++;
+      goalsTimeline.push({ minute: e.minute, home: h, away: a });
+    });
+
+    const possHome = randInt(r, 38, 64);
+    const shotsHome = randInt(r, 6, 20), shotsAway = randInt(r, 5, 18);
+    const sotHome = randInt(r, 2, Math.max(2, Math.round(shotsHome * 0.55)));
+    const sotAway = randInt(r, 1, Math.max(2, Math.round(shotsAway * 0.55)));
+    const xgHome = +(shotsHome * (0.08 + r() * 0.06)).toFixed(2);
+    const xgAway = +(shotsAway * (0.08 + r() * 0.06)).toFixed(2);
+
+    const stats = [
+      { label: 'Posesión', home: possHome + '%', away: (100 - possHome) + '%', ha: possHome, aa: 100 - possHome },
+      { label: 'Remates', home: shotsHome, away: shotsAway, ha: shotsHome, aa: shotsAway },
+      { label: 'A puerta', home: sotHome, away: sotAway, ha: sotHome, aa: sotAway },
+      { label: 'xG', home: xgHome, away: xgAway, ha: xgHome, aa: xgAway },
+      { label: 'Córners', home: randInt(r, 1, 11), away: randInt(r, 1, 10), ha: 1, aa: 1 },
+      { label: 'Faltas', home: randInt(r, 6, 18), away: randInt(r, 6, 18), ha: 1, aa: 1 },
+      { label: 'Pases', home: randInt(r, 320, 660), away: randInt(r, 300, 620), ha: 1, aa: 1 },
+      { label: 'Precisión', home: randInt(r, 74, 92) + '%', away: randInt(r, 72, 90) + '%', ha: 1, aa: 1 },
+    ];
+    stats.forEach((s) => {
+      if (s.ha === 1 && s.aa === 1) {
+        const ph = parseFloat(s.home), pa = parseFloat(s.away);
+        s.ha = ph; s.aa = pa;
+      }
+    });
+
+    const momentum = [];
+    let mv = 0;
+    for (let min = 0; min <= 90; min += 3) {
+      mv += (r() - 0.5) * 2 + (possHome - 50) / 90;
+      momentum.push({ minute: min, value: +mv.toFixed(2) });
+    }
+
+    return {
+      id, league: lg, home: m.home, away: m.away, hs, as,
+      status: m.status, minute: m.minute, date: m.date,
+      lineups: { home: buildLineup(r), away: buildLineup(r) },
+      events, goalsTimeline, momentum, stats,
+      possession: { home: possHome, away: 100 - possHome },
+      xg: { home: xgHome, away: xgAway },
+    };
+  }
+
   const cache = {};
   function load(id) {
     if (cache[id]) return cache[id];
@@ -295,6 +394,18 @@
     getMatches: (id) => load(id).matches,
     getSummary: (id) => load(id).summary,
     getTeam: (id, teamId) => load(id).table.find((t) => t.id === teamId),
+    getMatchList: (id) => {
+      const m = load(id).matches;
+      return [
+        ...m.live.map((x, i) => ({ id: 'l' + i, ...x })),
+        ...m.recent.map((x, i) => ({ id: 'r' + i, ...x })),
+      ];
+    },
+    getMatchAnalysis: (id, matchId) => {
+      const list = window.StatData.getMatchList(id);
+      const m = list.find((x) => x.id === matchId) || list[0];
+      return buildMatchAnalysis(id, m, m.id);
+    },
     search: (id, q) => {
       q = (q || "").trim().toLowerCase();
       if (!q) return { teams: [], players: [] };

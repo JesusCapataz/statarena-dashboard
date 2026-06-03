@@ -64,6 +64,8 @@
     jugadores: (s) => ["Jugadores", `${s.leagueName} · Líderes y máximos goleadores`],
     estadisticas: (s) => ["Estadísticas avanzadas", `${s.leagueName} · Métricas de rendimiento`],
     comparador: (s) => ["Comparador de equipos", `${s.leagueName} · Enfrentamiento estadístico`],
+    analisis: (s) => ["Análisis de partido", `${s.leagueName} · Eventos, alineaciones, xG y momentum`],
+    marca: () => ["Marca", "Sistema de identidad de StatArena"],
   };
 
   /* =====================================================================
@@ -624,6 +626,193 @@
   }
 
   /* =====================================================================
+     VISTA: ANÁLISIS DE PARTIDO
+     ===================================================================== */
+  function viewAnalisis() {
+    const lg = state.league;
+    const list = StatData.getMatchList(lg);
+    if (!state.matchId || !list.find((x) => x.id === state.matchId)) state.matchId = list[0].id;
+    const a = StatData.getMatchAnalysis(lg, state.matchId);
+
+    const opts = list
+      .map((m) => `<option value="${m.id}" ${m.id === state.matchId ? "selected" : ""}>${esc(m.home.name)} vs ${esc(m.away.name)}</option>`)
+      .join("");
+    const status = a.status === "live"
+      ? `<div class="scoreboard__status live"><span class="tag-live">${a.minute}'</span></div>`
+      : `<div class="scoreboard__status">Final</div>`;
+
+    const evMeta = (e) =>
+      e.type === "goal" ? { cls: "goal", label: "Gol" }
+      : e.type === "card" ? (e.detail === "Red Card" ? { cls: "red", label: "Roja" } : { cls: "card", label: "Amarilla" })
+      : { cls: "subst", label: "Cambio" };
+    const eventRow = (e) => {
+      const m = evMeta(e);
+      const cell = `<div class="tl-side ${e.side}"><span class="tl-ico ${m.cls}"></span><span class="tl-name">${esc(e.player || "")}<small> · ${m.label}${e.assist ? ` (${esc(e.assist)})` : ""}</small></span></div>`;
+      const blank = `<div></div>`;
+      return `<div class="tl-item">${e.side === "home" ? cell : blank}<span class="tl-min num">${e.minute}'</span>${e.side === "away" ? cell : blank}</div>`;
+    };
+    const lineupBlock = (team, lu) => `
+      <div class="lineup">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">${crest(team, 22)}<strong style="font-size:13px">${esc(team.short)}</strong><span class="lineup__formation">${esc(lu.formation)}</span></div>
+        <div class="xi">${lu.startXI.map((p) => `<div class="xi-item"><span class="xi-num">${p.number}</span><span class="tl-name">${esc(p.name)}</span><span class="xi-pos">${esc(p.pos)}</span></div>`).join("")}</div>
+        <div class="card__sub" style="margin-top:8px">Suplentes</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:4px;line-height:1.6">${lu.substitutes.map((p) => esc(p.name)).join(" · ")}</div>
+      </div>`;
+
+    content.innerHTML = `
+      <div class="view">
+        <div class="card">
+          <div class="card__head">
+            <div class="match-pick">
+              <span class="eyebrow">Partido</span>
+              <select id="matchSel" aria-label="Seleccionar partido">${opts}</select>
+            </div>
+            <span class="chip">xG ${a.xg.home} – ${a.xg.away}</span>
+          </div>
+          <div class="scoreboard">
+            <div class="scoreboard__team">${crest(a.home, 48)}<strong>${esc(a.home.name)}</strong></div>
+            <div class="scoreboard__center"><div class="scoreboard__score num">${a.hs} : ${a.as}</div>${status}</div>
+            <div class="scoreboard__team">${crest(a.away, 48)}<strong>${esc(a.away.name)}</strong></div>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card__head"><div><div class="card__title">Momentum</div><div class="card__sub">Presión por minuto · + ${esc(a.home.short)} / − ${esc(a.away.short)}</div></div></div>
+            <div class="chart-wrap" id="momentumChart"></div>
+          </div>
+          <div class="card">
+            <div class="card__head"><div class="card__title">Estadísticas</div></div>
+            <div id="statCompare"></div>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card__head"><div class="card__title">Cronología</div></div>
+            <div class="timeline">${a.events.length ? a.events.map(eventRow).join("") : '<p class="muted center" style="padding:18px">Sin eventos.</p>'}</div>
+          </div>
+          <div class="card">
+            <div class="card__head"><div class="card__title">Alineaciones</div></div>
+            <div class="lineups">${lineupBlock(a.home, a.lineups.home)}${lineupBlock(a.away, a.lineups.away)}</div>
+          </div>
+        </div>
+      </div>`;
+
+    Charts.area(
+      document.getElementById("momentumChart"),
+      { labels: a.momentum.map((p) => p.minute + "'"), series: [{ name: "momentum", color: cssVar("--accent"), values: a.momentum.map((p) => p.value) }] },
+      { height: 230 },
+    );
+
+    document.getElementById("statCompare").innerHTML = a.stats
+      .map((s) => {
+        const tot = (Math.abs(s.ha) + Math.abs(s.aa)) || 1;
+        const pa = (s.ha / tot) * 100, pb = (s.aa / tot) * 100;
+        const aWin = s.label === "Faltas" ? s.ha < s.aa : s.ha > s.aa;
+        return `<div class="compare-row"><b style="text-align:left;color:${aWin ? "var(--accent)" : "var(--text)"}">${s.home}</b><div><div class="compare-label">${esc(s.label)}</div><div class="compare-bar"><span class="a" style="width:${pa}%"></span><span class="b" style="width:${pb}%"></span></div></div><b style="text-align:right;color:${!aWin ? "var(--info)" : "var(--text)"}">${s.away}</b></div>`;
+      })
+      .join("");
+
+    document.getElementById("matchSel").addEventListener("change", (e) => {
+      state.matchId = e.target.value;
+      viewAnalisis();
+      appendDisclaimer();
+    });
+  }
+
+  /* =====================================================================
+     VISTA: MARCA (sistema de identidad)
+     ===================================================================== */
+  function markSvg(size, o) {
+    o = o || {};
+    const s = size || 40;
+    const bg = o.bg || "var(--mark-bg)";
+    const bars = o.bars || "#eef2f7";
+    const accent = o.accent || "var(--accent)";
+    return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" role="img" aria-label="StatArena"><rect width="64" height="64" rx="15" fill="${bg}"/><rect x="17" y="33" width="7" height="13" rx="3" fill="${bars}"/><rect x="28.5" y="27" width="7" height="19" rx="3" fill="${bars}"/><rect x="40" y="20" width="7" height="26" rx="3" fill="${bars}"/><path d="M20.5,32.5 L32,26.5 L43.5,20" fill="none" stroke="${accent}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="43.5" cy="20" r="4.2" fill="${accent}"/></svg>`;
+  }
+  function markMono(size, color) {
+    const s = size || 40, c = color || "currentColor";
+    return `<svg viewBox="0 0 64 64" width="${s}" height="${s}"><rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="none" stroke="${c}" stroke-width="3"/><rect x="17" y="33" width="7" height="13" rx="3" fill="${c}"/><rect x="28.5" y="27" width="7" height="19" rx="3" fill="${c}"/><rect x="40" y="20" width="7" height="26" rx="3" fill="${c}"/><path d="M20.5,32.5 L32,26.5 L43.5,20" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="43.5" cy="20" r="4.2" fill="${c}"/></svg>`;
+  }
+
+  const BRAND_PROMPT = [
+    "Minimalist vector logo / app icon for \"StatArena\", a professional football (soccer) analytics platform.",
+    "Concept: a rounded-square dark ink tile (#0e141c) containing three ascending off-white stat bars, overlaid by a rising orange trend line (#ff6a00) ending in a glowing orange node (a live data point).",
+    "Style: flat, geometric, broadcast/editorial sports aesthetic, high contrast, crisp at small sizes, no gradients, no text in the icon.",
+    "Palette: ink #0e141c, floodlight orange #ff6a00, off-white #eef2f7.",
+    "Deliver: primary icon on transparent background, plus a monochrome (single-color) version and an inverse version for dark backgrounds. SVG-like clean edges, centered, generous padding. Modern, ownable, NOT a generic AI look.",
+  ].join("\n\n");
+
+  function viewMarca() {
+    const swatch = (name, hex, use) => `<div class="swatch"><div class="swatch__chip" style="background:${hex}"></div><div class="swatch__meta"><b>${name}</b><span>${hex}</span><div class="muted" style="font-size:10.5px">${use}</div></div></div>`;
+    content.innerHTML = `
+      <div class="view">
+        <div class="logo-hero">
+          ${markSvg(72)}
+          <div class="logo-hero__word"><span class="logo-hero__name">StatArena</span><span class="logo-hero__tag">Football Intelligence</span></div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card__head"><div><div class="card__title">Variantes</div><div class="card__sub">Para cualquier fondo</div></div></div>
+            <div class="variant-grid">
+              <div class="variant on-dark">${markSvg(56)}<span class="variant__label">Principal</span></div>
+              <div class="variant on-light">${markSvg(56)}<span class="variant__label">Sobre claro</span></div>
+              <div class="variant on-accent">${markMono(56, "#1a0c00")}<span class="variant__label">Sobre acento</span></div>
+              <div class="variant on-dark">${markMono(56, "#eef2f7")}<span class="variant__label">Monocromo</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card__head"><div><div class="card__title">Escalabilidad</div><div class="card__sub">Legible hasta 20px (favicon)</div></div></div>
+            <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;padding:8px 0">
+              ${[64, 40, 28, 20].map((s) => `<div style="text-align:center"><div>${markSvg(s)}</div><div class="variant__label" style="margin-top:8px">${s}px</div></div>`).join("")}
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card__head"><div><div class="card__title">Paleta de marca</div><div class="card__sub">Color con significado (léxico de dominio)</div></div></div>
+          <div class="swatches">
+            ${swatch("Floodlight", "#ff6a00", "Acento / acción")}
+            ${swatch("Pitch", "#2bb673", "Positivo")}
+            ${swatch("Card yellow", "#f5a524", "Aviso")}
+            ${swatch("Card red", "#e5484d", "Negativo")}
+            ${swatch("Kickoff", "#4c8dff", "Información")}
+            ${swatch("Ink", "#0e141c", "Base oscura")}
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card__head"><div class="card__title">Uso correcto</div></div>
+            <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text-2);line-height:1.8">
+              <li>Área de respeto ≥ a la altura del isotipo.</li>
+              <li>No deformar ni alterar los colores del isotipo.</li>
+              <li>Sobre fotos, usar la versión monocroma.</li>
+              <li>Tamaño mínimo del isotipo: 20&nbsp;px.</li>
+              <li>Archivos SVG en <code>/brand</code> del repo.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card__head"><div><div class="card__title">Prompt para IA</div><div class="card__sub">Genera una versión raster y adjúntala; la integro</div></div></div>
+            <div class="prompt-box"><button class="btn btn--sm copy-btn" id="copyPrompt">Copiar</button><pre id="promptText">${esc(BRAND_PROMPT)}</pre></div>
+          </div>
+        </div>
+      </div>`;
+
+    const btn = document.getElementById("copyPrompt");
+    btn.addEventListener("click", () => {
+      try {
+        navigator.clipboard.writeText(BRAND_PROMPT);
+        btn.textContent = "Copiado";
+        setTimeout(() => (btn.textContent = "Copiar"), 1500);
+      } catch (_) {}
+    });
+  }
+
+  /* =====================================================================
      ROUTER
      ===================================================================== */
   const VIEWS = {
@@ -634,6 +823,8 @@
     jugadores: viewJugadores,
     estadisticas: viewEstadisticas,
     comparador: viewComparador,
+    analisis: viewAnalisis,
+    marca: viewMarca,
   };
 
   function appendDisclaimer() {
@@ -792,11 +983,33 @@
     });
   }
 
+  /* ---------- Tiempo real (SSE) — sólo si hay backend configurado ---------- */
+  function setupLive() {
+    if (!window.StatApi || !window.StatApi.isEnabled()) return;
+    const footStrong = document.querySelector(".datasrc__body strong");
+    const footSpan = document.querySelector(".datasrc__body span");
+    const dot = document.querySelector(".datasrc__dot");
+    try {
+      window.StatApi.subscribeLive(
+        (payload) => {
+          if (footStrong) footStrong.textContent = `EN VIVO · ${payload.count} en juego`;
+          if (footSpan) footSpan.textContent = `Backend conectado · ${new Date(payload.at).toLocaleTimeString()}`;
+          if (dot) dot.style.background = "var(--loss)";
+        },
+        () => {
+          if (footStrong) footStrong.textContent = "Backend sin conexión";
+          if (dot) dot.style.background = "var(--text-3)";
+        },
+      );
+    } catch (_) {}
+  }
+
   /* ---------- Boot ---------- */
   function boot() {
     initEvents();
     const initial = location.hash.replace("#", "");
     navigate(VIEWS[initial] ? initial : "resumen");
+    setupLive();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

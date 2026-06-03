@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" width="300" height="64" role="img" aria-label="StatArena — Football Intelligence">
+  <title>StatArena — logotipo horizontal (fondo claro)</title>
+  <rect x="0" y="0" width="64" height="64" rx="15" fill="#0e141c"/>
+  <rect x="17" y="33" width="7" height="13" rx="3" fill="#eef2f7"/>
+  <rect x="28.5" y="27" width="7" height="19" rx="3" fill="#eef2f7"/>
+  <rect x="40" y="20" width="7" height="26" rx="3" fill="#eef2f7"/>
+  <path d="M20.5,32.5 L32,26.5 L43.5,20" fill="none" stroke="#ff6a00" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="43.5" cy="20" r="4.2" fill="#ff6a00"/>
+  <text x="80" y="36" font-family="Archivo, 'Segoe UI', sans-serif" font-size="26" font-weight="800" letter-spacing="-0.6" fill="#0e141c">StatArena</text>
+  <text x="81" y="51" font-family="Archivo, 'Segoe UI', sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#8b96a5">FOOTBALL INTELLIGENCE</text>
+</svg>
