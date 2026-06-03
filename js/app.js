@@ -29,7 +29,12 @@
   function crest(team, size) {
     const s = size || 30;
     const fg = textColorOn(team.color);
-    return `<span class="crest" style="width:${s}px;height:${s}px;background:linear-gradient(135deg, ${team.color}, ${team.c2 || team.color});color:${fg}">${esc(team.short)}</span>`;
+    const fsz = Math.max(8, Math.round(s * 0.38));
+    const mono = `<span class="crest__mono" style="background:linear-gradient(135deg, ${team.color}, ${team.c2 || team.color});color:${fg};font-size:${fsz}px;${team.apiId ? "display:none" : ""}">${esc(team.short)}</span>`;
+    const img = team.apiId
+      ? `<img src="https://media.api-sports.io/football/teams/${team.apiId}.png" alt="${esc(team.name)}" loading="lazy" decoding="async" onerror="this.remove();var m=this.parentNode.querySelector('.crest__mono');if(m)m.style.display='grid';">`
+      : "";
+    return `<span class="crest" style="width:${s}px;height:${s}px">${img}${mono}</span>`;
   }
   function avatar(name, color) {
     const initials = name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -210,11 +215,11 @@
     return `
       <div class="card kpi">
         <div class="kpi__top">
-          <div class="kpi__icon">${ICONS[icon] || ""}</div>
+          <span class="kpi__icon">${ICONS[icon] || ""}</span>
+          <span class="kpi__label">${esc(label)}</span>
+          ${chip ? `<span class="kpi__delta">${chip}</span>` : ""}
         </div>
-        <div class="kpi__label">${esc(label)}</div>
-        <div class="kpi__value">${esc(value)}</div>
-        <div class="kpi__foot">${chip}</div>
+        <div class="kpi__value num">${esc(value)}</div>
         <div class="kpi__spark" id="${id}"></div>
       </div>`;
   }
