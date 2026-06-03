@@ -30,9 +30,10 @@
     const s = size || 30;
     const fg = textColorOn(team.color);
     const fsz = Math.max(8, Math.round(s * 0.38));
-    const mono = `<span class="crest__mono" style="background:linear-gradient(135deg, ${team.color}, ${team.c2 || team.color});color:${fg};font-size:${fsz}px;${team.apiId ? "display:none" : ""}">${esc(team.short)}</span>`;
-    const img = team.apiId
-      ? `<img src="https://media.api-sports.io/football/teams/${team.apiId}.png" alt="${esc(team.name)}" loading="lazy" decoding="async" onerror="this.remove();var m=this.parentNode.querySelector('.crest__mono');if(m)m.style.display='grid';">`
+    const src = team.logo || (team.apiId ? `https://media.api-sports.io/football/teams/${team.apiId}.png` : null);
+    const mono = `<span class="crest__mono" style="background:linear-gradient(135deg, ${team.color}, ${team.c2 || team.color});color:${fg};font-size:${fsz}px;${src ? "display:none" : ""}">${esc(team.short)}</span>`;
+    const img = src
+      ? `<img src="${src}" alt="${esc(team.name)}" loading="lazy" decoding="async" onerror="this.remove();var m=this.parentNode.querySelector('.crest__mono');if(m)m.style.display='grid';">`
       : "";
     return `<span class="crest" style="width:${s}px;height:${s}px">${img}${mono}</span>`;
   }
@@ -79,23 +80,29 @@
      ===================================================================== */
   function viewResumen() {
     const lg = state.league;
-    const s = StatData.getSummary(lg);
     const table = StatData.getStandings(lg);
     const scorers = StatData.getScorers(lg);
     const matches = StatData.getMatches(lg);
+
+    const totalGoals = table.reduce((a, t) => a + t.gf, 0);
+    const totalMatches = Math.round(table.reduce((a, t) => a + t.played, 0) / 2);
+    const avgGoals = totalMatches ? +(totalGoals / totalMatches).toFixed(2) : 0;
+    const topScorerGoals = (scorers[0] || { goals: 0 }).goals;
+    const topGF = [...table].sort((a, b) => b.gf - a.gf).slice(0, 8);
+    const spark = (table[0] && table[0].ptsSeries) ? table[0].ptsSeries : [];
+    const finished = [...(matches.live || []), ...(matches.recent || [])].filter((m) => m.hs != null && m.as != null);
+    let _hw = 0, _dr = 0, _aw = 0;
+    finished.forEach((m) => { if (m.hs > m.as) _hw++; else if (m.hs < m.as) _aw++; else _dr++; });
+    const hasResults = (_hw + _dr + _aw) > 0;
 
     const html = `
       <div class="view">
         <!-- KPIs -->
         <div class="kpis">
-          ${kpiCard("Goles totales", s.totalGoals, "+8.4%", true, "ball",
-            (table[0].ptsSeries || []).map((_, i) => 2 + Math.sin(i / 2) + Math.random()))}
-          ${kpiCard("Media de goles/partido", s.avgGoals, "+0.12", true, "trend",
-            s.goalsByRound)}
-          ${kpiCard("Partidos jugados", s.totalMatches, `${s.round}/${s.rounds} jornadas`, null, "calendar",
-            (table[0].ptsSeries || []))}
-          ${kpiCard("Asistencia media", (s.avgAttendance / 1000).toFixed(1) + "K", "+3.1%", true, "people",
-            Array.from({ length: 12 }, () => 28 + Math.random() * 30))}
+          ${kpiCard("Goles totales", totalGoals, null, null, "ball", topGF.map((t) => t.gf))}
+          ${kpiCard("Media goles/partido", avgGoals, null, null, "trend", spark)}
+          ${kpiCard("Partidos jugados", totalMatches, null, null, "calendar", spark)}
+          ${kpiCard("Máximo goleador", topScorerGoals, "goles", null, "people", scorers.slice(0, 8).map((p) => p.goals))}
         </div>
 
         <!-- Gráfico principal + líder -->
@@ -103,17 +110,13 @@
           <div class="card">
             <div class="card__head">
               <div>
-                <div class="card__title">Goles por jornada</div>
-                <div class="card__sub">Media de la liga a lo largo de la temporada</div>
-              </div>
-              <div class="seg" id="segGoals">
-                <button class="is-active" data-r="all">Temporada</button>
-                <button data-r="10">Últimas 10</button>
+                <div class="card__title">Goles a favor · Top 8</div>
+                <div class="card__sub">Equipos más realizadores de la competición</div>
               </div>
             </div>
             <div class="chart-wrap" id="chartGoals"></div>
             <div class="legend">
-              <span><i style="background:${cssVar('--brand')}"></i>Goles / jornada</span>
+              <span><i style="background:${cssVar('--brand')}"></i>Goles a favor</span>
             </div>
           </div>
 
@@ -132,11 +135,11 @@
               <div class="card__title">Partidos en directo</div>
               <span class="tag-live">EN VIVO</span>
             </div>
-            ${matches.live.map(matchRow).join("")}
+            ${matches.live.length ? matches.live.map(matchRow).join("") : '<p class="muted center" style="padding:10px 0">No hay partidos en vivo ahora.</p>'}
             <div class="card__head" style="margin:18px 0 12px">
               <div class="card__title" style="font-size:13px">Resultados recientes</div>
             </div>
-            ${matches.recent.slice(0, 3).map(matchRow).join("")}
+            ${matches.recent.length ? matches.recent.slice(0, 3).map(matchRow).join("") : '<p class="muted center" style="padding:10px 0">Sin resultados recientes.</p>'}
           </div>
 
           <div class="card">
@@ -162,7 +165,7 @@
           <div class="card">
             <div class="card__head">
               <div class="card__title">Distribución de resultados</div>
-              <div class="card__sub">Local · empate · visitante</div>
+              <div class="card__sub">${hasResults ? finished.length + " partidos finalizados" : "Local · empate · visitante"}</div>
             </div>
             <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;justify-content:center;padding:10px 0">
               <div id="donutResults"></div>
@@ -177,36 +180,28 @@
       </div>`;
     content.innerHTML = html;
 
-    // charts
-    const gb = s.goalsByRound;
+    // charts (datos reales)
     Charts.area(
       document.getElementById("chartGoals"),
-      { labels: gb.map((_, i) => "J" + (i + 1)), series: [{ name: "goles", color: cssVar("--brand"), values: gb }] },
+      { labels: topGF.map((t) => t.short), series: [{ name: "GF", color: cssVar("--brand"), values: topGF.map((t) => t.gf) }] },
       { height: 250 }
     );
+    const donutData = hasResults
+      ? [
+          { label: "Local", value: _hw, color: cssVar("--win") },
+          { label: "Empate", value: _dr, color: cssVar("--draw") },
+          { label: "Visitante", value: _aw, color: cssVar("--info") },
+        ]
+      : [
+          { label: "Local", value: 45, color: cssVar("--win") },
+          { label: "Empate", value: 26, color: cssVar("--draw") },
+          { label: "Visitante", value: 29, color: cssVar("--info") },
+        ];
     Charts.donut(
       document.getElementById("donutResults"),
-      [
-        { label: "Local", value: 45, color: cssVar("--win") },
-        { label: "Empate", value: 26, color: cssVar("--draw") },
-        { label: "Visitante", value: 29, color: cssVar("--info") },
-      ],
-      { center: { value: s.totalMatches, label: "partidos" } }
+      donutData,
+      { center: { value: hasResults ? finished.length : totalMatches, label: "partidos" } }
     );
-
-    // segmented control demo
-    const seg = document.getElementById("segGoals");
-    seg.addEventListener("click", (e) => {
-      const b = e.target.closest("button"); if (!b) return;
-      seg.querySelectorAll("button").forEach((x) => x.classList.remove("is-active"));
-      b.classList.add("is-active");
-      const vals = b.dataset.r === "all" ? gb : gb.slice(-10);
-      Charts.area(
-        document.getElementById("chartGoals"),
-        { labels: vals.map((_, i) => "J" + (i + 1)), series: [{ name: "goles", color: cssVar("--brand"), values: vals }] },
-        { height: 250 }
-      );
-    });
   }
 
   function kpiCard(label, value, delta, up, icon, spark) {
@@ -838,24 +833,28 @@
      en demo idéntico. Si lo hay, precargamos del backend y los getters de
      StatData devuelven los datos reales sin tocar las vistas. */
   const liveMode = () => !!(window.StatApi && window.StatApi.isEnabled());
-  const LIVE = { standings: {}, scorers: {} };
+  const LIVE = { standings: {}, scorers: {}, matches: {} };
   const _demoStandings = StatData.getStandings.bind(StatData);
   const _demoScorers = StatData.getScorers.bind(StatData);
   const _demoTeam = StatData.getTeam.bind(StatData);
+  const _demoMatches = StatData.getMatches.bind(StatData);
   StatData.getStandings = (lg) => (liveMode() && LIVE.standings[lg]) ? LIVE.standings[lg] : _demoStandings(lg);
   StatData.getScorers = (lg) => (liveMode() && LIVE.scorers[lg]) ? LIVE.scorers[lg] : _demoScorers(lg);
+  StatData.getMatches = (lg) => (liveMode() && LIVE.matches[lg]) ? LIVE.matches[lg] : _demoMatches(lg);
   StatData.getTeam = (lg, id) => {
     if (liveMode() && LIVE.standings[lg]) return LIVE.standings[lg].find((t) => t.id === String(id)) || LIVE.standings[lg][0];
     return _demoTeam(lg, id);
   };
   async function ensureLive(lg) {
-    if (!liveMode() || (LIVE.standings[lg] && LIVE.scorers[lg])) return;
-    const [st, sc] = await Promise.all([
+    if (!liveMode() || (LIVE.standings[lg] && LIVE.scorers[lg] && LIVE.matches[lg])) return;
+    const [st, sc, mt] = await Promise.all([
       window.StatApi.getStandings(lg).catch(() => null),
       window.StatApi.getScorers(lg).catch(() => null),
+      window.StatApi.getMatches(lg).catch(() => null),
     ]);
     if (st && st.length) LIVE.standings[lg] = st;
     if (sc && sc.length) LIVE.scorers[lg] = sc;
+    if (mt && (mt.live.length || mt.recent.length || mt.upcoming.length)) LIVE.matches[lg] = mt;
   }
 
   function appendDisclaimer() {
@@ -1042,9 +1041,32 @@
     } catch (_) {}
   }
 
+  /* ---------- Dropdown de ligas dinámico (escalable, dirigido por backend) ---------- */
+  async function buildLeagueOptions() {
+    if (!liveMode() || !window.StatApi || !window.StatApi.getLeagues) return;
+    try {
+      const info = await window.StatApi.getLeagues();
+      const ids = (info && info.leagueIds) || [];
+      const opts = ids
+        .map((id) => {
+          const slug = window.StatApi.slugForId(id);
+          const meta = slug && window.StatApi.leagues[slug];
+          return meta ? `<option value="${slug}">${esc(meta.name)}</option>` : "";
+        })
+        .filter(Boolean)
+        .join("");
+      const sel = document.getElementById("leagueSelect");
+      if (opts && sel) {
+        sel.innerHTML = opts;
+        state.league = sel.value;
+      }
+    } catch (_) {}
+  }
+
   /* ---------- Boot ---------- */
-  function boot() {
+  async function boot() {
     initEvents();
+    await buildLeagueOptions();
     const initial = location.hash.replace("#", "");
     navigate(VIEWS[initial] ? initial : "resumen");
     setupLive();

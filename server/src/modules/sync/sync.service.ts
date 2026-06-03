@@ -40,6 +40,8 @@ export class SyncService implements OnModuleInit {
     }
     this.logger.log('Sincronización inicial de competiciones…');
     await this.syncStandings();
+    await this.syncScorers();
+    await this.syncFixtures();
   }
 
   @Cron(CronExpression.EVERY_30_MINUTES)

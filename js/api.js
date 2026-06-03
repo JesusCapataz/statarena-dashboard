@@ -24,8 +24,24 @@
   else if (stored) BASE = stored;
   else if (["localhost", "127.0.0.1", "::1"].indexOf(location.hostname) !== -1) BASE = "http://localhost:3001/api";
 
-  // Mapa de slugs de la UI ↔ ids de liga del proveedor (API-Football)
-  const LEAGUE_IDS = { laliga: 140, premier: 39, seriea: 135, bundesliga: 78 };
+  // Catálogo de ligas EXTENSIBLE. Para añadir una liga futura: añade una línea
+  // aquí (slug + id del proveedor + nombre) y su id en el backend (SYNC_LEAGUE_IDS).
+  const LEAGUES_META = {
+    laliga:      { id: 140, name: "LaLiga",         country: "España" },
+    premier:     { id: 39,  name: "Premier League", country: "Inglaterra" },
+    seriea:      { id: 135, name: "Serie A",        country: "Italia" },
+    bundesliga:  { id: 78,  name: "Bundesliga",     country: "Alemania" },
+    ligue1:      { id: 61,  name: "Ligue 1",        country: "Francia" },
+    eredivisie:  { id: 88,  name: "Eredivisie",     country: "Países Bajos" },
+    primeira:    { id: 94,  name: "Primeira Liga",  country: "Portugal" },
+    championship:{ id: 40,  name: "Championship",   country: "Inglaterra" },
+  };
+  const LEAGUE_IDS = {};
+  const ID_TO_SLUG = {};
+  Object.keys(LEAGUES_META).forEach((slug) => {
+    LEAGUE_IDS[slug] = LEAGUES_META[slug].id;
+    ID_TO_SLUG[LEAGUES_META[slug].id] = slug;
+  });
 
   const isEnabled = () => !!BASE;
 
@@ -85,6 +101,26 @@
     };
   }
 
+  function toMatchTeam(id, name, logo) {
+    return {
+      id: String(id), apiId: id, name: name || "?",
+      short: shortOf(name || ""), color: hashColor(name || "x"),
+      c2: hashColor((name || "x") + "x"), logo: logo || null,
+    };
+  }
+  const LIVE_ST = ["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "IN_PLAY", "PAUSED"];
+  const FT_ST = ["FT", "AET", "PEN", "FINISHED", "AWARDED"];
+  function toMatch(f) {
+    const status = LIVE_ST.indexOf(f.status) !== -1 ? "live" : (FT_ST.indexOf(f.status) !== -1 ? "ft" : "ns");
+    return {
+      id: String(f.externalId), externalId: f.externalId, _utc: f.utcDate,
+      home: toMatchTeam(f.homeTeamExternalId, f.homeName, f.homeLogo),
+      away: toMatchTeam(f.awayTeamExternalId, f.awayName, f.awayLogo),
+      hs: f.homeGoals, as: f.awayGoals, status, minute: f.elapsed,
+      date: new Date(f.utcDate).toLocaleString("es-ES", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+    };
+  }
+
   function toScorer(p) {
     return {
       name: p.name,
@@ -105,6 +141,13 @@
     isEnabled,
     base: BASE,
     leagueId: (slug) => LEAGUE_IDS[slug],
+    slugForId: (id) => ID_TO_SLUG[id],
+    leagues: LEAGUES_META,
+
+    /** Lista de ligas activas configuradas en el backend (escalable). */
+    async getLeagues() {
+      return request(`/leagues`);
+    },
 
     async getStandings(slug, season) {
       const id = LEAGUE_IDS[slug];
@@ -121,6 +164,18 @@
     async getFixtures(slug, season) {
       const id = LEAGUE_IDS[slug];
       return request(`/leagues/${id}/fixtures${season ? `?season=${season}` : ""}`);
+    },
+
+    /** Partidos reales divididos en directo / recientes / próximos. */
+    async getMatches(slug) {
+      const fx = (await this.getFixtures(slug)).map(toMatch);
+      const byDateDesc = (a, b) => new Date(b._utc) - new Date(a._utc);
+      const byDateAsc = (a, b) => new Date(a._utc) - new Date(b._utc);
+      return {
+        live: fx.filter((m) => m.status === "live").slice(0, 6),
+        recent: fx.filter((m) => m.status === "ft").sort(byDateDesc).slice(0, 6),
+        upcoming: fx.filter((m) => m.status === "ns").sort(byDateAsc).slice(0, 6),
+      };
     },
 
     async getMatchAnalysis(fixtureId) {
