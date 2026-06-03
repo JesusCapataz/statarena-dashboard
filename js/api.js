@@ -12,9 +12,17 @@
 (function () {
   "use strict";
 
-  const BASE =
-    window.STATARENA_API_BASE ||
-    (function () { try { return localStorage.getItem("sa-api-base"); } catch (_) { return null; } })();
+  // Resolución de la base del backend:
+  //  1) window.STATARENA_API_BASE (override manual)
+  //  2) localStorage 'sa-api-base'  ('demo' fuerza modo demo)
+  //  3) AUTO: en localhost se conecta solo al backend de desarrollo
+  //  4) en otro host (p. ej. GitHub Pages) → demo
+  const stored = (function () { try { return localStorage.getItem("sa-api-base"); } catch (_) { return null; } })();
+  let BASE = null;
+  if (window.STATARENA_API_BASE) BASE = window.STATARENA_API_BASE;
+  else if (stored === "demo") BASE = null;
+  else if (stored) BASE = stored;
+  else if (["localhost", "127.0.0.1", "::1"].indexOf(location.hostname) !== -1) BASE = "http://localhost:3001/api";
 
   // Mapa de slugs de la UI ↔ ids de liga del proveedor (API-Football)
   const LEAGUE_IDS = { laliga: 140, premier: 39, seriea: 135, bundesliga: 78 };
