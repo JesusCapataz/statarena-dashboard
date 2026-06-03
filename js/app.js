@@ -40,6 +40,12 @@
     const initials = name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     return `<span class="avatar" style="background:linear-gradient(135deg, ${color}, ${color}aa);color:${textColorOn(color)}">${esc(initials)}</span>`;
   }
+  // Foto real del jugador si está disponible (modo live); si no, monograma.
+  function playerFace(p) {
+    return p.photo
+      ? `<img class="avatar" style="object-fit:cover" src="${p.photo}" alt="${esc(p.name)}" loading="lazy" />`
+      : avatar(p.name, p.color);
+  }
   function formGuide(form) {
     return `<span class="form">${form.map((f) => `<span class="${f.toLowerCase()}" title="${f}">${f}</span>`).join("")}</span>`;
   }
@@ -433,7 +439,7 @@
     return `
       <div class="rowlist__item">
         <span class="rowlist__rank">${i + 1}</span>
-        ${avatar(p.name, p.color)}
+        ${playerFace(p)}
         <div class="rowlist__name">
           <strong>${esc(p.name)}</strong>
           <span>${esc(p.teamName)} · ${esc(p.pos)}</span>
@@ -827,19 +833,51 @@
     marca: viewMarca,
   };
 
+  /* ---------- Fuente de datos: LIVE (backend) con fallback a DEMO ----------
+     Patrón seguro: si no hay backend configurado (sa-api-base), todo sigue
+     en demo idéntico. Si lo hay, precargamos del backend y los getters de
+     StatData devuelven los datos reales sin tocar las vistas. */
+  const liveMode = () => !!(window.StatApi && window.StatApi.isEnabled());
+  const LIVE = { standings: {}, scorers: {} };
+  const _demoStandings = StatData.getStandings.bind(StatData);
+  const _demoScorers = StatData.getScorers.bind(StatData);
+  const _demoTeam = StatData.getTeam.bind(StatData);
+  StatData.getStandings = (lg) => (liveMode() && LIVE.standings[lg]) ? LIVE.standings[lg] : _demoStandings(lg);
+  StatData.getScorers = (lg) => (liveMode() && LIVE.scorers[lg]) ? LIVE.scorers[lg] : _demoScorers(lg);
+  StatData.getTeam = (lg, id) => {
+    if (liveMode() && LIVE.standings[lg]) return LIVE.standings[lg].find((t) => t.id === String(id)) || LIVE.standings[lg][0];
+    return _demoTeam(lg, id);
+  };
+  async function ensureLive(lg) {
+    if (!liveMode() || (LIVE.standings[lg] && LIVE.scorers[lg])) return;
+    const [st, sc] = await Promise.all([
+      window.StatApi.getStandings(lg).catch(() => null),
+      window.StatApi.getScorers(lg).catch(() => null),
+    ]);
+    if (st && st.length) LIVE.standings[lg] = st;
+    if (sc && sc.length) LIVE.scorers[lg] = sc;
+  }
+
   function appendDisclaimer() {
     const host = content.querySelector(".view") || content;
     const d = document.createElement("div");
     d.className = "disclaimer";
-    d.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><span><b>Datos simulados</b> con fines de demostración (generados de forma determinista). Escudos reales vía media.api-sports.io · Conecta una API para resultados en vivo.</span>`;
+    const icon = `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`;
+    d.innerHTML = liveMode()
+      ? `${icon}<span><b>Datos reales</b> vía backend StatArena (API-Football). Clasificación y goleadores en vivo con fotos reales; el resto en demo mientras se completa el binding.</span>`
+      : `${icon}<span><b>Datos simulados</b> con fines de demostración (deterministas). Escudos reales vía media.api-sports.io · Conecta el backend para datos en vivo.</span>`;
     host.appendChild(d);
   }
 
-  function navigate(view) {
+  async function navigate(view) {
     if (!VIEWS[view]) view = "resumen";
     state.view = view;
     // nav active
     document.querySelectorAll(".nav__item").forEach((n) => n.classList.toggle("is-active", n.dataset.view === view));
+    // precarga de datos reales (si hay backend); en demo no hace nada
+    if (liveMode()) {
+      try { await ensureLive(state.league); } catch (_) {}
+    }
     // meta
     const s = StatData.getSummary(state.league);
     const [title, sub] = META[view](s);
