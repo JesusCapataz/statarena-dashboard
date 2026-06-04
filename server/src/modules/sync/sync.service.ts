@@ -30,7 +30,12 @@ export class SyncService implements OnModuleInit {
   ) {
     this.leagueIds = config.get<number[]>('provider.leagueIds') ?? [];
     this.season = config.get<number>('provider.defaultSeason')!;
-    this.enabled = !!config.get<string>('provider.apiKey');
+    // Activa la sincronización según el proveedor configurado y su credencial.
+    const providerName = config.get<string>('provider.name');
+    this.enabled =
+      providerName === 'footballdata'
+        ? !!config.get<string>('provider.fdToken')
+        : !!config.get<string>('provider.apiKey');
   }
 
   async onModuleInit(): Promise<void> {
