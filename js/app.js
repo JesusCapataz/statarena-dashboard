@@ -849,20 +849,46 @@
   const _demoTeam = StatData.getTeam.bind(StatData);
   const _demoMatches = StatData.getMatches.bind(StatData);
   const _demoMatchList = StatData.getMatchList.bind(StatData);
-  StatData.getStandings = (lg) => (liveMode() && LIVE.standings[lg]) ? LIVE.standings[lg] : _demoStandings(lg);
-  StatData.getScorers = (lg) => (liveMode() && LIVE.scorers[lg]) ? LIVE.scorers[lg] : _demoScorers(lg);
+  // En modo LIVE: si ya tenemos datos reales cargados, SOLO usamos esos (sin mezclar con demo).
+  StatData.getStandings = (lg) => (liveMode() && LIVE.standings[lg] && LIVE.standings[lg].length) ? LIVE.standings[lg] : _demoStandings(lg);
+  StatData.getScorers = (lg) => (liveMode() && LIVE.scorers[lg] && LIVE.scorers[lg].length) ? LIVE.scorers[lg] : _demoScorers(lg);
   StatData.getMatches = (lg) => (liveMode() && LIVE.matches[lg]) ? LIVE.matches[lg] : _demoMatches(lg);
   StatData.getMatchList = (lg) => {
     if (liveMode() && LIVE.matches[lg]) {
       const m = LIVE.matches[lg];
-      const list = [...m.live, ...m.recent];
+      const list = [...(m.live || []), ...(m.recent || [])];
       if (list.length) return list;
     }
     return _demoMatchList(lg);
   };
   StatData.getTeam = (lg, id) => {
-    if (liveMode() && LIVE.standings[lg]) return LIVE.standings[lg].find((t) => t.id === String(id)) || LIVE.standings[lg][0];
+    if (liveMode() && LIVE.standings[lg] && LIVE.standings[lg].length) {
+      return LIVE.standings[lg].find((t) => t.id === String(id) || t.id === id) || LIVE.standings[lg][0];
+    }
     return _demoTeam(lg, id);
+  };
+  // Override getSummary en modo live para que no reconstruya datos demo
+  const _demoSummary = StatData.getSummary.bind(StatData);
+  StatData.getSummary = (lg) => {
+    if (liveMode() && LIVE.standings[lg] && LIVE.standings[lg].length) {
+      const table = LIVE.standings[lg];
+      const scorers = LIVE.scorers[lg] || [];
+      const totalGoals = table.reduce((a, t) => a + (t.gf || 0), 0);
+      const totalMatches = Math.round(table.reduce((a, t) => a + (t.played || 0), 0) / 2);
+      return {
+        leagueName: (window.StatApi && window.StatApi.leagues[lg]) ? window.StatApi.leagues[lg].name : lg,
+        flag: "", season: "2024/25", country: "",
+        round: table[0] ? table[0].played : 0,
+        rounds: 38,
+        totalGoals, totalMatches,
+        avgGoals: totalMatches ? +(totalGoals / totalMatches).toFixed(2) : 0,
+        leader: table[0] || {},
+        topScorer: scorers[0] || {},
+        avgAttendance: 0,
+        goalsByRound: [],
+      };
+    }
+    return _demoSummary(lg);
   };
   async function ensureLive(lg) {
     if (!liveMode() || (LIVE.standings[lg] && LIVE.scorers[lg] && LIVE.matches[lg])) return;
