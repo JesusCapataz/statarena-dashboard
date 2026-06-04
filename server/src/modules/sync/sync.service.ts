@@ -20,6 +20,8 @@ export class SyncService implements OnModuleInit {
   private readonly leagueIds: number[];
   private readonly season: number;
   private readonly enabled: boolean;
+  private readonly providerName: string;
+  private readonly throttleMs: number;
 
   constructor(
     private readonly leagues: LeaguesService,
@@ -30,12 +32,18 @@ export class SyncService implements OnModuleInit {
   ) {
     this.leagueIds = config.get<number[]>('provider.leagueIds') ?? [];
     this.season = config.get<number>('provider.defaultSeason')!;
+    this.providerName = config.get<string>('provider.name')!;
     // Activa la sincronización según el proveedor configurado y su credencial.
-    const providerName = config.get<string>('provider.name');
     this.enabled =
-      providerName === 'footballdata'
+      this.providerName === 'footballdata'
         ? !!config.get<string>('provider.fdToken')
         : !!config.get<string>('provider.apiKey');
+    // football-data free = 10 req/min ≈ 1 cada 6 s. Espaciamos a 7 s con margen.
+    this.throttleMs = this.providerName === 'footballdata' ? 7_000 : 0;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async onModuleInit(): Promise<void> {
@@ -54,6 +62,7 @@ export class SyncService implements OnModuleInit {
     if (!this.enabled) return;
     for (const id of this.leagueIds) {
       await this.leagues.refreshStandings(id, this.season);
+      if (this.throttleMs) await this.sleep(this.throttleMs);
     }
     this.logger.log(`Standings sincronizadas (${this.leagueIds.length} ligas).`);
   }
@@ -63,6 +72,7 @@ export class SyncService implements OnModuleInit {
     if (!this.enabled) return;
     for (const id of this.leagueIds) {
       await this.players.refreshTopScorers(id, this.season);
+      if (this.throttleMs) await this.sleep(this.throttleMs);
     }
     this.logger.log('Goleadores sincronizados.');
   }
@@ -77,6 +87,7 @@ export class SyncService implements OnModuleInit {
       } catch (err: any) {
         this.logger.warn(`syncFixtures(${id}) failed: ${err?.message}`);
       }
+      if (this.throttleMs) await this.sleep(this.throttleMs);
     }
     this.logger.log('Calendario sincronizado.');
   }

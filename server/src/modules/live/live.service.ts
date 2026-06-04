@@ -43,7 +43,10 @@ export class LiveService implements OnModuleInit, OnModuleDestroy {
     private readonly fixtures: FixturesService,
     config: ConfigService,
   ) {
-    this.intervalMs = (config.get<number>('provider.livePollSeconds') ?? 20) * 1000;
+    const baseMs = (config.get<number>('provider.livePollSeconds') ?? 20) * 1000;
+    const providerName = config.get<string>('provider.name');
+    // football-data free = 10 req/min: poll cada 60s mínimo (1 req/min).
+    this.intervalMs = providerName === 'footballdata' ? Math.max(baseMs, 60_000) : baseMs;
     this.leagueIds = config.get<number[]>('provider.leagueIds') ?? [];
     this.season = config.get<number>('provider.defaultSeason')!;
   }
